@@ -82,6 +82,20 @@ impl<'a> Lcd<'a> {
         }
     }
 
+    /// Adds a color to the color look-up table for layer_2, using the alpha component as adress
+    pub fn layer_2_color_lookup_entry(&mut self, color: Color) {
+        unsafe {
+            self.controller.l2clutwr.write(|w|
+                w.clutadd().bits(color.alpha).red().bits(color.red).green().bits(color.green).blue().bits(color.blue)
+            );
+        }
+    }
+
+    /// Enables the color look-up table for layer_2
+    pub fn enable_cluten(&mut self) {
+        self.controller.l2cr.modify(|_, w| w.len().set_bit().cluten().set_bit());
+    }
+
     /// Returns a reference to layer 2.
     pub fn layer_2(&mut self) -> Option<Layer<FramebufferAl88>> {
         if self.layer_2_in_use {
