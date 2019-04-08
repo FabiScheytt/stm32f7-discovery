@@ -93,7 +93,7 @@ impl<'a> Lcd<'a> {
 
     /// Enables the color look-up table for layer_2
     pub fn enable_cluten(&mut self) {
-        self.controller.l2cr.modify(|_, w| w.len().set_bit().cluten().set_bit());
+        self.controller.modify(|_, w| w.cluten().set_bit());
     }
 
     /// Returns a reference to layer 2.

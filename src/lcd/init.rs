@@ -177,15 +177,15 @@ pub fn init<'a>(ltdc: &'a mut LTDC, rcc: &mut RCC) -> Lcd<'a> {
         .modify(|_, w| unsafe { w.cfblnbr().bits(HEIGHT) }); // line_number
 
     // configure color palette for layer_2   
-    unsafe {
+    /*unsafe {
         for i in 0..=255 {
             ltdc.l2clutwr.write(|w| w.clutadd().bits(i).red().bits(0xFF).green().bits(0).blue().bits(0));
         }
-    }
+    }*/
 
     // enable layers
     ltdc.l1cr.modify(|_, w| w.len().set_bit());
-    ltdc.l2cr.modify(|_, w| w.len().set_bit().cluten().set_bit());
+    ltdc.l2cr.modify(|_, w| w.len().set_bit());
 
     // reload shadow registers
     ltdc.srcr.modify(|_, w| w.imr().set_bit()); // IMMEDIATE_RELOAD
