@@ -35,6 +35,13 @@ pub const SDRAM_START: usize = 0xC000_0000;
 pub const LAYER_1_START: usize = SDRAM_START;
 /// Start address of the layer 2 framebuffer.
 pub const LAYER_2_START: usize = SDRAM_START + LAYER_1_LENGTH;
+/// Start address of the layer 2 framebuffer.
+pub const LAYER_2_BUFF_START: usize = SDRAM_START + LAYER_1_LENGTH + LAYER_2_LENGTH;
+
+#[derive(Copy, Clone)]
+pub enum BufferInUse {
+    First, Second
+}
 
 /// Represents the LCD and provides methods to access both layers.
 pub struct Lcd<'a> {
@@ -102,9 +109,19 @@ impl<'a> Lcd<'a> {
             None
         } else {
             Some(Layer {
-                framebuffer: FramebufferAl88::new(LAYER_2_START),
+                framebuffer: FramebufferAl88::new(LAYER_2_START, LAYER_2_BUFF_START),
             })
         }
+    }
+
+    // Switches the buffer for layer_2
+    pub fn switch_framebuffer(&mut self, buff: BufferInUse){
+        match buff {
+            BufferInUse::First => self.controller.l2cfbar.modify(|_, w| unsafe { w.cfbadd().bits(LAYER_2_START as u32) }),
+            BufferInUse::Second => self.controller.l2cfbar.modify(|_, w| unsafe { w.cfbadd().bits(LAYER_2_BUFF_START as u32) }),
+        }
+        // reload shadow registers
+        self.controller.srcr.modify(|_, w| w.vbr().set_bit()); // VERTICAL_BLANKING_RELOAD
     }
 }
 
@@ -112,6 +129,7 @@ impl<'a> Lcd<'a> {
 pub trait Framebuffer {
     /// Set the pixel at the specified coordinates to the specified color.
     fn set_pixel(&mut self, x: usize, y: usize, color: Color);
+    fn switch_buffer(&mut self, buff: BufferInUse);
 }
 
 /// A framebuffer in the ARGB8888 format.
@@ -133,6 +151,7 @@ impl Framebuffer for FramebufferArgb8888 {
         let pixel_ptr = (self.base_addr + pixel * LAYER_1_OCTETS_PER_PIXEL) as *mut u32;
         unsafe { ptr::write_volatile(pixel_ptr, color.to_argb8888()) };
     }
+    fn switch_buffer(&mut self, buff:BufferInUse) {}
 }
 
 /// A framebuffer in the AL88 format.
@@ -141,19 +160,26 @@ impl Framebuffer for FramebufferArgb8888 {
 /// lookup table. Thus, each pixel is represented by 16bits.
 pub struct FramebufferAl88 {
     base_addr: usize,
+    base_addr_buff: usize,
+    buffer_in_use: BufferInUse,
 }
 
 impl FramebufferAl88 {
-    const fn new(base_addr: usize) -> Self {
-        Self { base_addr }
+    const fn new(_base_addr: usize, _base_addr_buff: usize) -> Self {
+        Self { base_addr: _base_addr, base_addr_buff: _base_addr_buff, buffer_in_use: BufferInUse::First }
     }
 }
 
 impl Framebuffer for FramebufferAl88 {
     fn set_pixel(&mut self, x: usize, y: usize, color: Color) {
+        let addr = match self.buffer_in_use {BufferInUse::First => self.base_addr, BufferInUse::Second => self.base_addr_buff};
         let pixel = y * WIDTH + x;
-        let pixel_ptr = (self.base_addr + pixel * LAYER_2_OCTETS_PER_PIXEL) as *mut u16;
+        let pixel_ptr = (addr + pixel * LAYER_2_OCTETS_PER_PIXEL) as *mut u16;
         unsafe { ptr::write_volatile(pixel_ptr, u16::from(color.alpha) << 8 | u16::from(color.red)) };
+    }
+
+    fn switch_buffer(&mut self, buff:BufferInUse) {
+        self.buffer_in_use = buff;
     }
 }
 
@@ -181,6 +207,10 @@ impl<T: Framebuffer> Layer<T> {
                 );
             }
         }
+    }
+
+    pub fn switch_framebuffer(&mut self, buff :BufferInUse) {
+        self.framebuffer.switch_buffer(buff);
     }
 
     /// Fill the layer with vertical stripes.
